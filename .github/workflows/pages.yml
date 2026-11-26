@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'site/**'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +17,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
       - name: Check encrypted site files
@@ -26,7 +25,19 @@ jobs:
           test -s site/index.html
           test -s site/content.enc
           test -f site/.nojekyll
-      - uses: actions/upload-pages-artifact@v4
+          expected="$(printf '.nojekyll\ncontent.enc\nindex.html')"
+          actual="$(find site -mindepth 1 -printf '%P\n' | sort)"
+          test "$actual" = "$expected"
+          test "$(find site -mindepth 1 -type f | wc -l | tr -d ' ')" = 3
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const envelope = JSON.parse(readFileSync('site/content.enc', 'utf8'));
+          const base64Length = (value) => typeof value === 'string' && /^[A-Za-z0-9+/]+={0,2}$/.test(value) && Buffer.from(value, 'base64').toString('base64') === value ? Buffer.from(value, 'base64').length : -1;
+          if (envelope.version !== 1 || envelope.algorithm !== 'AES-256-GCM' || envelope.kdf !== 'PBKDF2-SHA256') throw new Error('Unexpected encryption envelope.');
+          if (!Number.isSafeInteger(envelope.iterations) || envelope.iterations < 10000 || envelope.iterations > 2000000) throw new Error('Invalid PBKDF2 iteration count.');
+          if (base64Length(envelope.salt) !== 16 || base64Length(envelope.iv) !== 12 || base64Length(envelope.ciphertext) < 16) throw new Error('Incomplete encryption envelope.');
+          NODE
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v4
         with:
           path: site
 
@@ -41,4 +52,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
