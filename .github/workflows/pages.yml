@@ -26,6 +26,10 @@ jobs:
           test -s site/index.html
           test -s site/content.enc
           test -f site/.nojekyll
+          expected="$(printf '.nojekyll\ncontent.enc\nindex.html')"
+          actual="$(find site -mindepth 1 -printf '%P\n' | sort)"
+          test "$actual" = "$expected"
+          test "$(find site -mindepth 1 -type f | wc -l | tr -d ' ')" = 3
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
